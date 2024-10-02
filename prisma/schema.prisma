@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Example Model (for dynamic tables)
+model DynamicTable {
+  id   Int    @id @default(autoincrement())
+  name String
+}
+
+
+model test {
+      id     Int      @id @default(autoincrement())
+      
+    }
+
+model User {
+      id     Int      @id @default(autoincrement())
+      email String @unique
+  name String
+  createdAt DateTime @default(now())
+    }
