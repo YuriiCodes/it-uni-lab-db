@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { promises as fs } from 'fs';
 import { Column, CreateCreateTableDto } from './dto/create-create-table.dto';
 import { UpdateCreateTableDto } from './dto/update-create-table.dto';
@@ -28,10 +28,14 @@ export class CreateTableService {
   async create({ tableName, columns }: CreateCreateTableDto) {
     const newTable = this.generatePrismaTableSchema(tableName, columns);
 
-    // 1. Update schema.prisma dynamically
+    const tableExists = await this.isTableExistInPrismaSchema(tableName);
+
+    if (tableExists) {
+      throw new HttpException(`Table ${tableName} already exists in the schema.`, HttpStatus.BAD_REQUEST);
+    }
+
     await this.updatePrismaSchema(newTable);
 
-    // 2. Trigger Prisma migration
     const migrationCommand = `npx prisma migrate dev --name add-${tableName}`;
     exec(migrationCommand, (error, stdout, stderr) => {
       if (error) {
@@ -44,7 +48,6 @@ export class CreateTableService {
     return { message: `Table ${tableName} created and migration applied.` };
   }
 
-  // Helper to generate Prisma table schema string
   private generatePrismaTableSchema(
     tableName: string,
     columns: Column[],
@@ -59,7 +62,12 @@ export class CreateTableService {
     }`;
   }
 
-  // Helper to append to schema.prisma
+  private async isTableExistInPrismaSchema(tableName: string): Promise<boolean> {
+    const schemaPath = 'prisma/schema.prisma';
+    const schemaFile = await fs.readFile(schemaPath, 'utf-8');
+    return schemaFile.includes(`model ${tableName} {`);
+  }
+
   private async updatePrismaSchema(newTable: string): Promise<void> {
     const schemaPath = 'prisma/schema.prisma';
     const schemaFile = await fs.readFile(schemaPath, 'utf-8');
@@ -68,7 +76,6 @@ export class CreateTableService {
   }
 
   async findAll() {
-    // @ts-ignore
     const allTables: Table[] = await this.prismaService.$queryRaw`SELECT name
                                                                   FROM sqlite_master
                                                                   WHERE type = "table";`;
@@ -76,10 +83,7 @@ export class CreateTableService {
       (table: Table) => !_systemTables.includes(table.name),
     );
 
-    // get the structure of each tables:
     for (const table of allTablesNoSystem) {
-      // @ts-ignore
-      console.log('table', table);
       const query = `PRAGMA table_info(${table.name});`;
       const res = await this.prismaService.$queryRawUnsafe(query);
 
@@ -89,12 +93,12 @@ export class CreateTableService {
     return allTablesNoSystem;
   }
 
-  toObject(data: any) {
-    return JSON.parse(JSON.stringify(data, (key, value) =>
-      typeof value === 'bigint'
-        ? value.toString()
-        : value
-    ));
+  private toObject(data: any) {
+    return JSON.parse(
+      JSON.stringify(data, (_, value) =>
+        typeof value === 'bigint' ? value.toString() : value,
+      ),
+    );
   }
 
   findOne(id: number) {
