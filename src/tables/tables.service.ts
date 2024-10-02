@@ -22,7 +22,8 @@ type Table = {
 
 @Injectable()
 export class TablesService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(private prismaService: PrismaService) {
+  }
 
   async create({ tableName, columns }: CreateTableDto) {
     const newTable = this.generatePrismaTableSchema(tableName, columns);
@@ -105,40 +106,134 @@ export class TablesService {
     );
   }
 
-  // Modify the schema and run migration to remove a table
   async remove(tableName: string) {
-    // Check if the table exists in the Prisma schema
     const schemaPath = 'prisma/schema.prisma';
     const schemaFile = await fs.readFile(schemaPath, 'utf-8');
 
     const tableExists = await this.isTableExistInPrismaSchema(tableName);
 
     if (!tableExists) {
-      throw new HttpException(`Table ${tableName} does not exist.`, HttpStatus.NOT_FOUND);
+      throw new HttpException(
+        `Table ${tableName} does not exist.`,
+        HttpStatus.NOT_FOUND,
+      );
     }
 
-    // Remove the table definition from schema.prisma
     const updatedSchema = this.removeTableFromSchema(schemaFile, tableName);
     await fs.writeFile(schemaPath, updatedSchema);
 
-    // Trigger a Prisma migration
     const migrationCommand = `npx prisma migrate dev --name remove-${tableName}`;
     exec(migrationCommand, (error, stdout, stderr) => {
       if (error) {
         console.error(`Error during migration: ${stderr}`);
-        throw new HttpException(`Migration failed: ${stderr}`, HttpStatus.INTERNAL_SERVER_ERROR);
+        throw new HttpException(
+          `Migration failed: ${stderr}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
       console.log(stdout);
     });
 
-    return { message: `Table ${tableName} has been deleted and migration applied.` };
+    return {
+      message: `Table ${tableName} has been deleted and migration applied.`,
+    };
   }
 
-  // Helper to remove the table definition from schema.prisma
   private removeTableFromSchema(schemaFile: string, tableName: string): string {
     const modelRegex = new RegExp(`model ${tableName} {[^}]*}`, 'g');
-    const updatedSchema = schemaFile.replace(modelRegex, '').trim();
+    return schemaFile.replace(modelRegex, '').trim();
+  }
 
-    return updatedSchema;
+  async renameField({
+                      tableName,
+                      oldFieldName,
+                      newFieldName,
+                    }: {
+    tableName: string;
+    oldFieldName: string;
+    newFieldName: string;
+  }) {
+    const schemaPath = 'prisma/schema.prisma';
+    const schemaFile = await fs.readFile(schemaPath, 'utf-8');
+
+    const tableExists = await this.isTableExistInPrismaSchema(tableName);
+
+    if (!tableExists) {
+      throw new HttpException(
+        `Table ${tableName} does not exist.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const modelRegex = new RegExp(`model ${tableName} {([^}]*)}`, 'gs');
+    const modelMatch = modelRegex.exec(schemaFile);
+
+    if (!modelMatch || !modelMatch[1]) {
+      throw new HttpException(
+        `Table ${tableName} does not exist in schema.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const modelContent = modelMatch[1];
+
+    const fieldExists = new RegExp(`\\b${oldFieldName}\\b`).test(modelContent);
+
+    if (!fieldExists) {
+      throw new HttpException(
+        `Field ${oldFieldName} does not exist in the ${tableName} table.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const updatedSchema = this.renameFieldInSchema(
+      schemaFile,
+      tableName,
+      oldFieldName,
+      newFieldName,
+    );
+    await fs.writeFile(schemaPath, updatedSchema);
+
+    const migrationCommand = `npx prisma migrate dev --name rename-${oldFieldName}-to-${newFieldName}`;
+    exec(migrationCommand, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error during migration: ${stderr}`);
+        throw new HttpException(
+          `Migration failed: ${stderr}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      console.log(stdout);
+    });
+
+    return {
+      message: `Field ${oldFieldName} renamed to ${newFieldName} in table ${tableName}.`,
+    };
+  }
+
+  private renameFieldInSchema(
+    schemaFile: string,
+    tableName: string,
+    oldFieldName: string,
+    newFieldName: string,
+  ): string {
+    const modelRegex = new RegExp(`model ${tableName} {([^}]*)}`, 'gs');
+    const modelMatch = modelRegex.exec(schemaFile);
+
+    if (modelMatch && modelMatch[1]) {
+      const modelContent = modelMatch[1];
+
+      const fieldRegex = new RegExp(`\\b${oldFieldName}\\b(\\s+\\S+)(\\s+@default\\(.*\\))?`, 'g');
+
+      const updatedModelContent = modelContent.replace(fieldRegex, (match, fieldType, defaultAttr) => {
+        const newFieldDefinition = `${newFieldName}${fieldType}`;
+        return defaultAttr ? `${newFieldDefinition} ${defaultAttr}` : `${newFieldDefinition} @default("null")`;
+      });
+
+
+      return schemaFile.replace(modelContent, updatedModelContent);
+    }
+
+    return schemaFile;
   }
 }
