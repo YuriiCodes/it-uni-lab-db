@@ -1,7 +1,6 @@
-import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { promises as fs } from 'fs';
-import { Column, CreateCreateTableDto } from './dto/create-create-table.dto';
-import { UpdateCreateTableDto } from './dto/update-create-table.dto';
+import { Column, CreateTableDto } from './dto/create-table.dto';
 import { exec } from 'child_process';
 import { PrismaService } from '../prisma.service';
 
@@ -22,16 +21,19 @@ type Table = {
 };
 
 @Injectable()
-export class CreateTableService {
+export class TablesService {
   constructor(private prismaService: PrismaService) {}
 
-  async create({ tableName, columns }: CreateCreateTableDto) {
+  async create({ tableName, columns }: CreateTableDto) {
     const newTable = this.generatePrismaTableSchema(tableName, columns);
 
     const tableExists = await this.isTableExistInPrismaSchema(tableName);
 
     if (tableExists) {
-      throw new HttpException(`Table ${tableName} already exists in the schema.`, HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        `Table ${tableName} already exists in the schema.`,
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     await this.updatePrismaSchema(newTable);
@@ -62,7 +64,9 @@ export class CreateTableService {
     }`;
   }
 
-  private async isTableExistInPrismaSchema(tableName: string): Promise<boolean> {
+  private async isTableExistInPrismaSchema(
+    tableName: string,
+  ): Promise<boolean> {
     const schemaPath = 'prisma/schema.prisma';
     const schemaFile = await fs.readFile(schemaPath, 'utf-8');
     return schemaFile.includes(`model ${tableName} {`);
@@ -93,6 +97,7 @@ export class CreateTableService {
     return allTablesNoSystem;
   }
 
+  // Convert bigint values to strings (unchanged)
   private toObject(data: any) {
     return JSON.parse(
       JSON.stringify(data, (_, value) =>
@@ -101,15 +106,42 @@ export class CreateTableService {
     );
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} createTable`;
-  }
+  async remove(tableName: string, id: number) {
+    const tableExists: Array<unknown> =
+      await this.prismaService.$queryRawUnsafe(
+        `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table'
+         AND name = '${tableName}';`,
+      );
 
-  update(id: number, updateCreateTableDto: UpdateCreateTableDto) {
-    return `This action updates a #${id} createTable`;
-  }
+    if (!tableExists?.length) {
+      throw new HttpException(
+        `Table ${tableName} does not exist.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
 
-  remove(id: number) {
-    return `This action removes a #${id} createTable`;
+    const isRecordExists: Array<unknown> =
+      await this.prismaService.$queryRawUnsafe(
+        `SELECT id
+       FROM ${tableName}
+       WHERE id = ?;`,
+        id,
+      );
+
+    if (!isRecordExists?.length) {
+      throw new HttpException(
+        `Record with id ${id} does not exist in ${tableName}.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const deleteCommand = `DELETE
+                           FROM ${tableName}
+                           WHERE id = ?`;
+    await this.prismaService.$executeRawUnsafe(deleteCommand, id);
+
+    return { message: `Record with id ${id} deleted from ${tableName}.` };
   }
 }

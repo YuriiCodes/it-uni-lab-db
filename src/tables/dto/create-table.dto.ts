@@ -10,7 +10,7 @@ export class Column {
   type: string;
 }
 
-export class CreateCreateTableDto {
+export class CreateTableDto {
   @IsString()
   tableName: string;
 
