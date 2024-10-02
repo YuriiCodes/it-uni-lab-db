@@ -97,7 +97,6 @@ export class TablesService {
     return allTablesNoSystem;
   }
 
-  // Convert bigint values to strings (unchanged)
   private toObject(data: any) {
     return JSON.parse(
       JSON.stringify(data, (_, value) =>
@@ -106,42 +105,40 @@ export class TablesService {
     );
   }
 
-  async remove(tableName: string, id: number) {
-    const tableExists: Array<unknown> =
-      await this.prismaService.$queryRawUnsafe(
-        `SELECT name
-       FROM sqlite_master
-       WHERE type = 'table'
-         AND name = '${tableName}';`,
-      );
+  // Modify the schema and run migration to remove a table
+  async remove(tableName: string) {
+    // Check if the table exists in the Prisma schema
+    const schemaPath = 'prisma/schema.prisma';
+    const schemaFile = await fs.readFile(schemaPath, 'utf-8');
 
-    if (!tableExists?.length) {
-      throw new HttpException(
-        `Table ${tableName} does not exist.`,
-        HttpStatus.NOT_FOUND,
-      );
+    const tableExists = await this.isTableExistInPrismaSchema(tableName);
+
+    if (!tableExists) {
+      throw new HttpException(`Table ${tableName} does not exist.`, HttpStatus.NOT_FOUND);
     }
 
-    const isRecordExists: Array<unknown> =
-      await this.prismaService.$queryRawUnsafe(
-        `SELECT id
-       FROM ${tableName}
-       WHERE id = ?;`,
-        id,
-      );
+    // Remove the table definition from schema.prisma
+    const updatedSchema = this.removeTableFromSchema(schemaFile, tableName);
+    await fs.writeFile(schemaPath, updatedSchema);
 
-    if (!isRecordExists?.length) {
-      throw new HttpException(
-        `Record with id ${id} does not exist in ${tableName}.`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    // Trigger a Prisma migration
+    const migrationCommand = `npx prisma migrate dev --name remove-${tableName}`;
+    exec(migrationCommand, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error during migration: ${stderr}`);
+        throw new HttpException(`Migration failed: ${stderr}`, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+      console.log(stdout);
+    });
 
-    const deleteCommand = `DELETE
-                           FROM ${tableName}
-                           WHERE id = ?`;
-    await this.prismaService.$executeRawUnsafe(deleteCommand, id);
+    return { message: `Table ${tableName} has been deleted and migration applied.` };
+  }
 
-    return { message: `Record with id ${id} deleted from ${tableName}.` };
+  // Helper to remove the table definition from schema.prisma
+  private removeTableFromSchema(schemaFile: string, tableName: string): string {
+    const modelRegex = new RegExp(`model ${tableName} {[^}]*}`, 'g');
+    const updatedSchema = schemaFile.replace(modelRegex, '').trim();
+
+    return updatedSchema;
   }
 }

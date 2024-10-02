@@ -16,11 +16,10 @@ export class TablesController {
     return this.createTableService.findAll();
   }
 
-  @Delete(':tableName/:id')
+  @Delete(':tableName')
   remove(
     @Param('tableName') tableName: string,
-    @Param('id') id: number
   ) {
-    return this.createTableService.remove(tableName, id);
+    return this.createTableService.remove(tableName);
   }
 }

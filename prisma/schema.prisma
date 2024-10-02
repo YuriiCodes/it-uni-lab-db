@@ -28,17 +28,3 @@ model User {
   name String
   createdAt DateTime @default(now())
     }
-
-model User2 {
-      id     Int      @id @default(autoincrement())
-      email String @unique
-  name String
-  createdAt DateTime @default(now())
-    }
-
-model User6 {
-      id     Int      @id @default(autoincrement())
-      email String @unique
-  name String
-  createdAt DateTime @default(now())
-    }
