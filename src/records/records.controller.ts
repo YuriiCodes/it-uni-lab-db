@@ -15,18 +15,25 @@ import { UpdateRecordDto } from './dto/update-record.dto';
 export class RecordsController {
   constructor(private readonly recordsService: RecordsService) {}
 
-  @Post()
-  create(@Body() createRecordDto: CreateRecordDto) {
-    return this.recordsService.create(createRecordDto);
+  @Post(':tableName')
+  create(
+    @Param('tableName') tableName: string,
+    @Body() createRecordDto: CreateRecordDto,
+  ) {
+    return this.recordsService.create(tableName, createRecordDto);
   }
   @Get(':tableName')
   findOne(@Param('tableName') tableName: string) {
     return this.recordsService.findOne(tableName);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRecordDto: UpdateRecordDto) {
-    return this.recordsService.update(+id, updateRecordDto);
+  @Patch(':tableName/:id')
+  update(
+    @Param('tableName') tableName: string,
+    @Param('id') id: number,
+    @Body() updateRecordDto: UpdateRecordDto,
+  ) {
+    return this.recordsService.update(tableName, +id, updateRecordDto);
   }
 
   @Delete(':tableName/:id')

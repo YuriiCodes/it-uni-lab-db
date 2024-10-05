@@ -41,43 +41,27 @@ export class RecordsService {
     }
   }
 
-  private async executeCreateQuery(query: string, values: any[]) {
-    await this.prismaService.$executeRawUnsafe(query, ...values);
-  }
-
-  async create(createRecordDto: CreateRecordDto) {
+  async create(tableName: string, createRecordDto: CreateRecordDto) {
+    await this.validateTable(tableName);
     try {
-      await this.validateTable(createRecordDto.tableName);
-
       const columns = Object.keys(createRecordDto.columns).join(', ');
       const placeholders = Object.values(createRecordDto.columns)
         .map(() => '?')
         .join(', ');
       const values = Object.values(createRecordDto.columns);
 
-      const insertCommand = `INSERT INTO ${createRecordDto.tableName}
+      const insertCommand = `INSERT INTO ${tableName}
                                  (${columns})
                              VALUES (${placeholders});`;
 
-      await this.executeCreateQuery(insertCommand, values);
+      await this.prismaService.$executeRawUnsafe(insertCommand, ...values);
 
       return {
-        message: `Record created in ${createRecordDto.tableName}.`,
+        message: `Record created in ${tableName}.`,
       };
     } catch (e) {
       throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
-  }
-
-  async findAll(tableName: string) {
-    await this.validateTable(tableName);
-
-    const allRecords = await this.prismaService.$queryRawUnsafe(
-      `SELECT *
-       FROM ${tableName};`,
-    );
-
-    return allRecords;
   }
 
   async findOne(tableName: string) {
@@ -89,8 +73,28 @@ export class RecordsService {
     );
   }
 
-  update(id: number, updateRecordDto: UpdateRecordDto) {
-    return `This action updates a #${id} record`;
+  async update(
+    tableName: string,
+    id: number,
+    updateRecordDto: UpdateRecordDto,
+  ) {
+    await this.validateTable(tableName);
+
+    await this.validateRecord(tableName, id);
+
+    try {
+      const query = `UPDATE ${tableName}
+                     SET ${Object.keys(updateRecordDto.columns)
+                       .map((key) => `${key} = ?`)
+                       .join(', ')}
+                     WHERE id = ?;`;
+      const values = [...Object.values(updateRecordDto.columns), id];
+
+      await this.prismaService.$executeRawUnsafe(query, ...values);
+      return { message: `Record with id ${id} updated in ${tableName}.` };
+    } catch (e) {
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
+    }
   }
 
   async remove(tableName: string, id: number) {
