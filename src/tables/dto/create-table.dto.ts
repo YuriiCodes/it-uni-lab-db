@@ -1,6 +1,10 @@
-import { ArrayMinSize, IsArray, IsString, ValidateNested } from "class-validator";
-import { Type } from "class-transformer";
-
+import {
+  ArrayMinSize,
+  IsArray,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class Column {
   @IsString()

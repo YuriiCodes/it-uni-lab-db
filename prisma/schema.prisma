@@ -10,8 +10,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Example Model (for dynamic tables)
-model DynamicTable {
-  id       Int     @id @default(autoincrement())
-  name String?  @default("null")
+model Users {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  username  String   @default("null")
+  createdAt DateTime @default(now())
 }

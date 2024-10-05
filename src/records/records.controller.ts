@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
 import { RecordsService } from './records.service';
 import { CreateRecordDto } from './dto/create-record.dto';
 import { UpdateRecordDto } from './dto/update-record.dto';
@@ -11,15 +19,9 @@ export class RecordsController {
   create(@Body() createRecordDto: CreateRecordDto) {
     return this.recordsService.create(createRecordDto);
   }
-
-  @Get()
-  findAll() {
-    return this.recordsService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.recordsService.findOne(+id);
+  @Get(':tableName')
+  findOne(@Param('tableName') tableName: string) {
+    return this.recordsService.findOne(tableName);
   }
 
   @Patch(':id')
@@ -28,10 +30,7 @@ export class RecordsController {
   }
 
   @Delete(':tableName/:id')
-  remove(
-    @Param('tableName') tableName: string,
-    @Param('id') id: number
-  ) {
+  remove(@Param('tableName') tableName: string, @Param('id') id: number) {
     return this.recordsService.remove(tableName, id);
   }
 }
