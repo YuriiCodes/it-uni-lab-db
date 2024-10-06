@@ -6,11 +6,12 @@ import {
   Param,
   Delete,
   Put,
+  Res,
 } from '@nestjs/common';
 import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateFieldDto } from './dto/update-field-name.dto';
-
+import { Response } from 'express';
 @Controller('tables')
 export class TablesController {
   constructor(private readonly createTableService: TablesService) {}
@@ -21,8 +22,18 @@ export class TablesController {
   }
 
   @Get()
-  findAll() {
-    return this.createTableService.findAll();
+  async findAll(@Res() res: Response) {
+    const tables = await this.createTableService.findAll();
+
+    //The Content-Range
+    return res
+      .setHeader('Content-Range', `tables 0-${tables.length}/${tables.length}`)
+      .send(tables);
+  }
+
+  @Get(':tableName')
+  findOne(@Param('tableName') tableName: string) {
+    return this.createTableService.findOne(tableName);
   }
 
   @Delete(':tableName')
@@ -30,7 +41,7 @@ export class TablesController {
     return this.createTableService.remove(tableName);
   }
 
-  @Put(':tableName/fields')
+  @Put(':tableName')
   renameField(
     @Param('tableName') tableName: string,
     @Body() updateFieldDto: UpdateFieldDto,

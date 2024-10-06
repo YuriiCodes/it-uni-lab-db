@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { CreateRecordDto } from './dto/create-record.dto';
 import { UpdateRecordDto } from './dto/update-record.dto';
 import { PrismaService } from '../prisma.service';
+import { systemTables } from '../constatns';
 
 @Injectable()
 export class RecordsService {
@@ -64,13 +65,47 @@ export class RecordsService {
     }
   }
 
-  async findOne(tableName: string) {
+  async findAll() {
+    const allTables: Array<unknown> = await this.prismaService.$queryRawUnsafe(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table';`,
+    );
+
+    const allTablesNoSystem = allTables.filter(
+      (table: any) => !systemTables.includes(table.name),
+    );
+
+    const tablesWithId = allTablesNoSystem.map((table: any) => {
+      table.id = table.name;
+      delete table.name;
+      return table;
+    });
+
+    for (const table of tablesWithId) {
+      table.records = await this.findOne(table.id);
+    }
+    return tablesWithId;
+  }
+  async findOne(tableName: string): Promise<Array<unknown>> {
     await this.validateTable(tableName);
 
-    return await this.prismaService.$queryRawUnsafe(
+    return this.prismaService.$queryRawUnsafe(
       `SELECT *
        FROM ${tableName};`,
     );
+  }
+
+  async findOneById(tableName: string, id: number): Promise<Array<unknown>> {
+    await this.validateTable(tableName);
+    const res = await this.prismaService.$queryRawUnsafe(
+      `SELECT *
+       FROM ${tableName}
+       WHERE id = ?;`,
+      id,
+    );
+
+    return res[0];
   }
 
   async update(

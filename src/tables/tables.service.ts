@@ -3,8 +3,7 @@ import { promises as fs } from 'fs';
 import { Column, CreateTableDto } from './dto/create-table.dto';
 import { exec } from 'child_process';
 import { PrismaService } from '../prisma.service';
-
-const _systemTables = ['_prisma_migrations', 'sqlite_sequence'];
+import { systemTables } from '../constatns';
 
 type ColumnInfo = {
   cid: number;
@@ -17,13 +16,13 @@ type ColumnInfo = {
 
 type Table = {
   name: string;
+  id: string;
   columns?: ColumnInfo[];
 };
 
 @Injectable()
 export class TablesService {
-  constructor(private prismaService: PrismaService) {
-  }
+  constructor(private prismaService: PrismaService) {}
 
   async create({ tableName, columns }: CreateTableDto) {
     const newTable = this.generatePrismaTableSchema(tableName, columns);
@@ -48,7 +47,10 @@ export class TablesService {
       console.log(stdout);
     });
 
-    return { message: `Table ${tableName} created and migration applied.` };
+    return {
+      message: `Table ${tableName} created and migration applied.`,
+      id: tableName,
+    };
   }
 
   private generatePrismaTableSchema(
@@ -85,17 +87,45 @@ export class TablesService {
                                                                   FROM sqlite_master
                                                                   WHERE type = "table";`;
     const allTablesNoSystem = allTables.filter(
-      (table: Table) => !_systemTables.includes(table.name),
+      (table: Table) => !systemTables.includes(table.name),
     );
 
     for (const table of allTablesNoSystem) {
       const query = `PRAGMA table_info(${table.name});`;
       const res = await this.prismaService.$queryRawUnsafe(query);
 
+      table.id = table.name;
       table.columns = this.toObject(res) as ColumnInfo[];
     }
 
     return allTablesNoSystem;
+  }
+
+  //get all the columns of a table, so do everything like in the findAll method, but only for one table
+  async findOne(tableName: string) {
+    const singleTableInArr: Table = await this.prismaService
+      .$queryRaw`SELECT name
+                 FROM sqlite_master
+                 WHERE type = "table"
+                   AND name = ${tableName};`;
+
+    const table = singleTableInArr[0];
+
+    if (!table) {
+      throw new HttpException(
+        `Table ${tableName} does not exist.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const query = `PRAGMA table_info(${tableName});`;
+    const res = await this.prismaService.$queryRawUnsafe(query);
+    console.log('res', res);
+
+    table.id = table.name;
+    table.columns = this.toObject(res) as ColumnInfo[];
+
+    return table;
   }
 
   private toObject(data: any) {
@@ -145,10 +175,10 @@ export class TablesService {
   }
 
   async renameField({
-                      tableName,
-                      oldFieldName,
-                      newFieldName,
-                    }: {
+    tableName,
+    oldFieldName,
+    newFieldName,
+  }: {
     tableName: string;
     oldFieldName: string;
     newFieldName: string;
@@ -223,17 +253,57 @@ export class TablesService {
     if (modelMatch && modelMatch[1]) {
       const modelContent = modelMatch[1];
 
-      const fieldRegex = new RegExp(`\\b${oldFieldName}\\b(\\s+\\S+)(\\s+@default\\(.*\\))?`, 'g');
+      const fieldRegex = new RegExp(
+        `\\b${oldFieldName}\\b(\\s+\\S+)(\\s+@default\\(.*\\))?`,
+        'g',
+      );
 
-      const updatedModelContent = modelContent.replace(fieldRegex, (match, fieldType, defaultAttr) => {
-        const newFieldDefinition = `${newFieldName}${fieldType}`;
-        return defaultAttr ? `${newFieldDefinition} ${defaultAttr}` : `${newFieldDefinition} @default("null")`;
-      });
-
+      const updatedModelContent = modelContent.replace(
+        fieldRegex,
+        (match, fieldType, defaultAttr) => {
+          const newFieldDefinition = `${newFieldName}${fieldType}`;
+          return defaultAttr
+            ? `${newFieldDefinition} ${defaultAttr}`
+            : `${newFieldDefinition} @default("null")`;
+        },
+      );
 
       return schemaFile.replace(modelContent, updatedModelContent);
     }
 
     return schemaFile;
   }
+
+  // private renameFieldInSchema(
+  //   schemaFile: string,
+  //   tableName: string,
+  //   oldFieldName: string,
+  //   newFieldName: string,
+  // ): string {
+  //   const modelRegex = new RegExp(`model ${tableName} {([^}]*)}`, 'gs');
+  //   const modelMatch = modelRegex.exec(schemaFile);
+  //
+  //   if (modelMatch && modelMatch[1]) {
+  //     const modelContent = modelMatch[1];
+  //
+  //     const fieldRegex = new RegExp(
+  //       `\\b${oldFieldName}\\b(\\s+\\S+)(\\s+@default\\(.*\\))?`,
+  //       'g',
+  //     );
+  //
+  //     const updatedModelContent = modelContent.replace(
+  //       fieldRegex,
+  //       (match, fieldType, defaultAttr) => {
+  //         const newFieldDefinition = `${newFieldName}${fieldType}`;
+  //         return defaultAttr
+  //           ? `${newFieldDefinition} ${defaultAttr}`
+  //           : `${newFieldDefinition} @default("null")`;
+  //       },
+  //     );
+  //
+  //     return schemaFile.replace(modelContent, updatedModelContent);
+  //   }
+  //
+  //   return schemaFile;
+  // }
 }
